@@ -1,0 +1,25 @@
+# 密钥（禁止入库）
+.env
+server/.env
+server/.env.local
+
+# 运行时数据（本地使用日志）
+data/
+
+# 依赖
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 日志与临时
+*.log
+*.tmp
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>译所 · 文献翻译工作台</title>
+<!-- 旧浏览器兼容垫片：pdf.js 等依赖 Promise.withResolvers（ES2024），旧内核 WebView 缺失会报错。
+     此处为经典脚本，先于下方 module 脚本执行，确保 API 存在。 -->
+<script>
+  if (typeof Promise.withResolvers !== 'function') {
+    Promise.withResolvers = function () {
+      var resolve, reject;
+      var promise = new Promise(function (res, rej) { resolve = res; reject = rej; });
+      return { promise: promise, resolve: resolve, reject: reject };
+    };
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ 侧栏 ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-name">译所</div>
+      <div class="brand-sub">文献翻译工作台</div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item is-active" data-screen="work"><span class="nav-ico">📥</span><span class="nav-label">工作台</span></button>
+      <button class="nav-item" data-screen="kb"><span class="nav-ico">📚</span><span class="nav-label">知识库</span></button>
+      <button class="nav-item" data-screen="terms"><span class="nav-ico">🏷️</span><span class="nav-label">术语表</span></button>
+      <button class="nav-item" data-screen="history"><span class="nav-ico">🕘</span><span class="nav-label">历史</span></button>
+      <button class="nav-item" data-screen="settings"><span class="nav-ico">⚙️</span><span class="nav-label">设置</span></button>
+    </nav>
+
+    <div class="sync-card">
+      <div class="sync-title">✅ 已同步知识库</div>
+      <div class="sync-stat" id="syncStat">— 条译法原则 · — 条术语</div>
+      <div class="sync-time" id="syncTime">—</div>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+
+    <!-- ---------- 工作台 ---------- -->
+    <section class="screen" id="screen-work">
+
+      <!-- 空态 -->
+      <div class="view" id="view-empty">
+        <div class="topbar">
+          <div class="title-group">
+            <h1 class="page-title">工作台</h1>
+            <p class="page-sub">拖入文献，先读你的翻译习惯，再动笔</p>
+          </div>
+          <div class="badge"><span class="badge-ico">✅</span><span>知识库已同步 · <span id="syncClock">20:48</span></span></div>
+        </div>
+
+        <div class="rulebar is-warn" id="engineBar">
+          <span class="rule-ico" id="engineIco">🔌</span>
+          <span id="engineText">正在检测翻译引擎…</span>
+        </div>
+
+        <div class="dropzone" id="dropzone">
+          <div class="dz-ico">📥</div>
+          <div class="dz-title">把文献拖到这里</div>
+          <div class="dz-sub">支持 PDF · DOCX · TXT · MD · SRT</div>
+          <button class="btn-primary" id="pickBtn">选择文件</button>
+          <input type="file" id="fileInput" hidden accept=".pdf,.doc,.docx,.txt,.md,.markdown,.epub,.srt">
+        </div>
+
+        <div class="rulebar">
+          <span class="rule-ico">🌐</span>
+          <span>按<b>正文内容</b>判定语言（不看文件名）：外文 → 中文；若正文为中文，会先弹窗请你选择输出语言</span>
+        </div>
+
+        <div class="rulebar is-privacy" id="privacyBar">
+          <span class="rule-ico">🔒</span>
+          <span>我们可能记录您提交的<b>原文、译文及使用时间</b>用于改进服务，提交即表示同意；数据由运营方导出管理，不会用于其它目的。</span>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <span class="sec-title">🕘 最近任务</span>
+            <span class="sec-more">查看全部</span>
+          </div>
+          <div id="recentList"></div>
+        </div>
+      </div>
+
+      <!-- 进行中 -->
+      <div class="view is-hidden" id="view-running">
+        <div class="topbar">
+          <div class="title-group">
+            <h1 class="page-title">正在翻译</h1>
+            <p class="page-sub">已载入你的翻译习惯：<span id="runKbStat">—</span></p>
+          </div>
+          <div class="badge"><span class="badge-ico">✅</span><span>知识库已同步</span></div>
+        </div>
+
+        <div class="content-row">
+          <div class="task-card">
+            <div class="file-head">
+              <span class="file-ico">📄</span>
+              <div class="file-info">
+                <div class="file-name" id="runFileName">—</div>
+                <div class="file-meta" id="runFileMeta">—</div>
+              </div>
+              <div class="pill pill-green" id="runLangPair">EN → 中文</div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="steps" id="steps"></div>
+
+            <div class="progress-wrap">
+              <div class="pct-row">
+                <span class="pct" id="pctText">0%</span>
+                <span class="pct-note" id="pctNote">预计还需 — 秒</span>
+              </div>
+              <div class="progress"><i id="progressFill" style="width:0%"></i></div>
+            </div>
+
+            <div class="logbox" id="logbox"></div>
+          </div>
+
+          <div class="kb-card">
+            <div class="card-head"><span class="card-ico">📚</span><span class="card-title">知识库命中</span></div>
+            <div class="stat-row"><span class="stat-name">译法原则</span><span class="stat-val" id="hitPrinciples">—</span></div>
+            <div class="stat-row"><span class="stat-name">术语与专名</span><span class="stat-val" id="hitTerms">—</span></div>
+            <div class="stat-row"><span class="stat-name">本次已用术语</span><span class="stat-val" id="hitUsed">—</span></div>
+            <div class="divider"></div>
+            <div class="mini-title">本次调用的译法原则</div>
+            <div class="tag-wrap" id="hitTags"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <span class="sec-title">📋 待处理队列</span>
+            <span class="sec-more">还有 2 个文件</span>
+          </div>
+          <div id="queueList"></div>
+        </div>
+      </div>
+
+      <!-- 结果 -->
+      <div class="view is-hidden" id="view-result">
+        <div class="topbar">
+          <div class="title-group">
+            <h1 class="page-title" id="resTitle">译文</h1>
+            <p class="page-sub"><span id="resMeta">—</span></p>
+          </div>
+          <div class="actions">
+            <button class="btn-ghost" id="backBtn">↩️ 返回工作台</button>
+            <div class="export-group">
+              <span class="export-label">导出格式</span>
+              <div class="seg" id="exportFmt">
+                <button class="seg-btn is-active" data-fmt="docx" type="button">DOCX</button>
+                <button class="seg-btn" data-fmt="md" type="button">Markdown</button>
+                <button class="seg-btn" data-fmt="txt" type="button">TXT</button>
+              </div>
+              <button class="btn-primary" id="exportBtn" type="button">⬇️ 导出</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="legend">
+          <span class="legend-label">名词注释</span>
+          <span class="legend-item"><span class="swatch">🟦</span>机构与程序</span>
+          <span class="legend-item"><span class="swatch">🟪</span>法律与制度</span>
+          <span class="legend-item"><span class="swatch">🟨</span>环境与气候</span>
+          <span class="legend-item"><span class="swatch">🟩</span>本文自动提取</span>
+        </div>
+
+        <div class="content-row content-row-flex">
+          <div class="doc">
+            <div class="doc-eyebrow is-hidden" id="docEyebrow"></div>
+            <h2 class="doc-title is-hidden" id="docTitle"></h2>
+            <div id="docBody"></div>
+            <div class="doc-note">
+              <span class="note-ico">🔖</span>
+              <span>标色名词后可点开查看注释；括号内为简明释义，完整释义见右侧「名词注释」。</span>
+            </div>
+            <div class="doc-src is-hidden" id="docSrcBox">
+              <span class="src-ico">📎</span>
+              <span id="docSrc"></span>
+            </div>
+          </div>
+
+          <div class="annot-side">
+            <div class="annot-head">
+              <div class="annot-title">名词注释</div>
+              <div class="annot-sub" id="annotSub">全篇 — 个 · 释义取自权威来源</div>
+            </div>
+            <div id="annotList"></div>
+            <div class="annot-foot">
+              <span class="foot-ico">🔎</span>
+              <span>释义均检索自联合国官方文件、白皮书译本等权威来源，不采用小众说法。</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 知识库 ---------- -->
+    <section class="screen is-hidden" id="screen-kb">
+      <div class="topbar">
+        <div class="title-group">
+          <h1 class="page-title">知识库 · 养成体系</h1>
+          <p class="page-sub">每次翻译都先读这里，译完再回写这里</p>
+        </div>
+        <button class="btn-primary btn-sm" id="resyncBtn">🔄 立即同步</button>
+      </div>
+
+      <div class="stat-grid" id="statGrid"></div>
+
+      <div class="panels">
+        <div class="panel">
+          <div class="card-head"><span class="card-ico">📐</span><span class="card-title">译法原则</span><span class="card-count" id="prinCount">—</span></div>
+          <div id="principleList"></div>
+        </div>
+
+        <div class="panel-col">
+          <div class="panel" id="termPanel">
+            <div class="card-head"><span class="card-ico">🏷️</span><span class="card-title">术语与专名</span><span class="card-count" id="termCount">—</span></div>
+            <div id="termGroups"></div>
+          </div>
+
+          <div class="panel">
+            <div class="card-head"><span class="card-ico">📚</span><span class="card-title">来源文献</span><span class="card-count" id="srcCount">—</span></div>
+            <div id="sourceList"></div>
+          </div>
+
+          <div class="panel panel-green">
+            <div class="card-head"><span class="card-ico">🔄</span><span class="card-title">最近更新</span></div>
+            <div id="updateList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ 移动端标签栏 ============ -->
+<nav class="tabbar">
+  <button class="tab is-active" data-screen="work"><span class="tab-ico">📥</span><span class="tab-label">工作台</span></button>
+  <button class="tab" data-screen="kb"><span class="tab-ico">📚</span><span class="tab-label">知识库</span></button>
+  <button class="tab" data-screen="terms"><span class="tab-ico">🏷️</span><span class="tab-label">术语表</span></button>
+  <button class="tab" data-screen="history"><span class="tab-ico">🕘</span><span class="tab-label">历史</span></button>
+  <button class="tab" data-screen="settings"><span class="tab-ico">⚙️</span><span class="tab-label">设置</span></button>
+</nav>
+
+<!-- ============ 语言选择弹窗 ============ -->
+<div class="overlay is-hidden" id="langModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-ico">🌐</span>
+      <div class="modal-title-group">
+        <div class="modal-title">检测到中文文献</div>
+        <div class="modal-sub" id="modalSub">默认由外语译为中文；本次正文判定为中文，请先选择输出语言</div>
+      </div>
+    </div>
+
+    <div class="lang-list" id="langList"></div>
+
+    <div class="modal-note">
+      <span class="note-ico">🔖</span>
+      <span>选定后仍会先读取知识库中的翻译习惯；专业名词将标色并附权威注释。</span>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-ghost" id="laterBtn">稍后再说</button>
+      <button class="btn-primary btn-sm" id="startBtn">开始翻译</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PDF 解析组件（pdf.js 4.10.38 · Apache-2.0 · Mozilla，本地内置，见 vendor/NOTICE.md） -->
+<script type="module">
+  import * as pdfjs from './vendor/pdf.min.mjs';
+  pdfjs.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
+  window.pdfjsLib = pdfjs;
+  window.pdfjsReady = true;
+</script>
+
+<script src="kb-data.js"></script>
+<script src="translator.js"></script>
+<script src="export.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
